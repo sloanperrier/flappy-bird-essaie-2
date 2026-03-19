@@ -1,1 +1,567 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FLAPPY NEO</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
 
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --cyan: #00f5ff;
+    --magenta: #ff006e;
+    --yellow: #ffdd00;
+    --dark: #020818;
+    --mid: #060d2e;
+    --grid: rgba(0,245,255,0.07);
+  }
+
+  body {
+    background: var(--dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    font-family: 'Orbitron', monospace;
+    overflow: hidden;
+  }
+
+  #game-wrapper {
+    position: relative;
+    width: 400px;
+    height: 600px;
+  }
+
+  canvas {
+    display: block;
+    border: 1px solid var(--cyan);
+    box-shadow: 0 0 30px rgba(0,245,255,0.3), 0 0 80px rgba(0,245,255,0.1), inset 0 0 30px rgba(0,0,0,0.8);
+    border-radius: 4px;
+  }
+
+  #ui {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #score-display {
+    position: absolute;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Orbitron', monospace;
+    font-size: 32px;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 0 10px var(--cyan), 0 0 30px var(--cyan);
+    letter-spacing: 4px;
+  }
+
+  #hi-display {
+    position: absolute;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: rgba(0,245,255,0.5);
+    letter-spacing: 3px;
+    white-space: nowrap;
+  }
+
+  #screen {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: rgba(2,8,24,0.88);
+    backdrop-filter: blur(2px);
+    pointer-events: all;
+    transition: opacity 0.3s;
+  }
+
+  #screen.hidden { opacity: 0; pointer-events: none; }
+
+  .screen-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 40px;
+    font-weight: 900;
+    color: var(--cyan);
+    text-shadow: 0 0 20px var(--cyan), 0 0 60px rgba(0,245,255,0.4);
+    letter-spacing: 6px;
+    line-height: 1;
+  }
+
+  .screen-sub {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: rgba(0,245,255,0.4);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+  }
+
+  .screen-score {
+    font-family: 'Orbitron', monospace;
+    font-size: 64px;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 0 20px var(--cyan);
+    margin: 8px 0;
+  }
+
+  .screen-btn {
+    margin-top: 16px;
+    padding: 12px 40px;
+    border: 1px solid var(--cyan);
+    background: transparent;
+    color: var(--cyan);
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    cursor: pointer;
+    pointer-events: all;
+    transition: all 0.2s;
+    text-shadow: 0 0 10px var(--cyan);
+    box-shadow: 0 0 20px rgba(0,245,255,0.2), inset 0 0 20px rgba(0,245,255,0.05);
+  }
+
+  .screen-btn:hover {
+    background: rgba(0,245,255,0.1);
+    box-shadow: 0 0 30px rgba(0,245,255,0.4), inset 0 0 20px rgba(0,245,255,0.1);
+  }
+
+  .hint {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: rgba(255,255,255,0.2);
+    letter-spacing: 2px;
+  }
+
+  .divider {
+    width: 100px;
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--cyan), transparent);
+    margin: 4px 0;
+  }
+</style>
+</head>
+<body>
+
+<div id="game-wrapper">
+  <canvas id="c" width="400" height="600"></canvas>
+
+  <div id="score-display">0</div>
+  <div id="hi-display">BEST: 0</div>
+
+  <div id="screen">
+    <div class="screen-sub">// ARCADE v2.077 //</div>
+    <div class="screen-title">FLAPPY<br>NEO</div>
+    <div class="divider"></div>
+    <div class="screen-sub">pilote cyborg en zone hostile</div>
+    <button class="screen-btn" id="start-btn">DÉMARRER</button>
+    <div class="hint">ESPACE · CLIC · TAP</div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 400, H = 600;
+
+let state = 'idle'; // idle | playing | dead
+let score = 0, best = 0;
+let frame = 0;
+
+// Bird
+const bird = { x: 90, y: 250, vy: 0, r: 14 };
+const GRAVITY = 0.38;
+const JUMP = -7.5;
+
+// Pipes
+const PIPE_W = 52;
+const PIPE_GAP = 155;
+const PIPE_SPEED = 2.6;
+let pipes = [];
+let pipeTimer = 0;
+const PIPE_INTERVAL = 95;
+
+// Particles
+let particles = [];
+
+// Scanlines / grid state
+let bgStars = [];
+for (let i = 0; i < 60; i++) {
+  bgStars.push({ x: Math.random() * W, y: Math.random() * H, s: Math.random() * 1.5 + 0.3, sp: Math.random() * 0.4 + 0.1 });
+}
+
+// ---- Helpers ----
+function rand(a, b) { return a + Math.random() * (b - a); }
+
+function spawnPipe() {
+  const topH = rand(60, H - PIPE_GAP - 60);
+  pipes.push({ x: W + 10, topH });
+}
+
+function spawnParticles(x, y, color, n) {
+  for (let i = 0; i < n; i++) {
+    const angle = rand(0, Math.PI * 2);
+    const speed = rand(1.5, 5);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1,
+      decay: rand(0.02, 0.05),
+      r: rand(2, 5),
+      color
+    });
+  }
+}
+
+// ---- Drawing ----
+function drawBg() {
+  // Base dark
+  ctx.fillStyle = '#020818';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(0,245,255,0.05)';
+  ctx.lineWidth = 0.5;
+  const gs = 40;
+  for (let x = (frame * 0.5) % gs; x < W; x += gs) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = (frame * PIPE_SPEED * 0.08) % gs; y < H; y += gs) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  // Stars
+  bgStars.forEach(s => {
+    s.x -= s.sp;
+    if (s.x < 0) { s.x = W; s.y = Math.random() * H; }
+    ctx.fillStyle = `rgba(255,255,255,${0.3 + s.s * 0.3})`;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.s * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Horizon glow line
+  ctx.strokeStyle = 'rgba(0,245,255,0.12)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, H - 60); ctx.lineTo(W, H - 60); ctx.stroke();
+
+  // Floor grid
+  ctx.strokeStyle = 'rgba(255,0,110,0.12)';
+  for (let x = 0; x < W; x += 30) {
+    ctx.beginPath();
+    ctx.moveTo(x, H - 60);
+    ctx.lineTo(W / 2, H + 80);
+    ctx.stroke();
+  }
+}
+
+function drawPipe(p) {
+  const gx = (p.x + PIPE_W) / W;
+
+  // Top pipe
+  const topGrad = ctx.createLinearGradient(p.x, 0, p.x + PIPE_W, 0);
+  topGrad.addColorStop(0, '#0a1a3a');
+  topGrad.addColorStop(0.4, '#0d2550');
+  topGrad.addColorStop(1, '#050e20');
+  ctx.fillStyle = topGrad;
+  ctx.fillRect(p.x, 0, PIPE_W, p.topH);
+
+  // Top pipe cap
+  const capH = 18;
+  ctx.fillStyle = '#0d3060';
+  ctx.fillRect(p.x - 5, p.topH - capH, PIPE_W + 10, capH);
+
+  // Cyan edge glow top
+  ctx.strokeStyle = 'rgba(0,245,255,0.6)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(p.x, 0, PIPE_W, p.topH);
+  ctx.strokeRect(p.x - 5, p.topH - capH, PIPE_W + 10, capH);
+
+  // Neon line on pipe
+  ctx.strokeStyle = 'rgba(0,245,255,0.2)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(p.x + PIPE_W / 2, 0); ctx.lineTo(p.x + PIPE_W / 2, p.topH - capH); ctx.stroke();
+
+  // Bottom pipe
+  const botY = p.topH + PIPE_GAP;
+  ctx.fillStyle = topGrad;
+  ctx.fillRect(p.x, botY, PIPE_W, H - botY);
+  ctx.fillStyle = '#0d3060';
+  ctx.fillRect(p.x - 5, botY, PIPE_W + 10, capH);
+
+  ctx.strokeStyle = 'rgba(0,245,255,0.6)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(p.x, botY, PIPE_W, H - botY);
+  ctx.strokeRect(p.x - 5, botY, PIPE_W + 10, capH);
+
+  ctx.strokeStyle = 'rgba(0,245,255,0.2)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(p.x + PIPE_W / 2, botY + capH); ctx.lineTo(p.x + PIPE_W / 2, H); ctx.stroke();
+
+  // Gap danger glow
+  const g = ctx.createLinearGradient(p.x, p.topH, p.x, botY);
+  g.addColorStop(0, 'rgba(255,0,110,0.06)');
+  g.addColorStop(0.5, 'rgba(255,0,110,0)');
+  g.addColorStop(1, 'rgba(255,0,110,0.06)');
+  ctx.fillStyle = g;
+  ctx.fillRect(p.x, p.topH, PIPE_W, PIPE_GAP);
+}
+
+function drawBird() {
+  const bx = bird.x, by = bird.y;
+  const tilt = Math.min(Math.max(bird.vy * 3.5, -40), 70) * Math.PI / 180;
+
+  ctx.save();
+  ctx.translate(bx, by);
+  ctx.rotate(tilt);
+
+  // Engine glow trail
+  const trailGrad = ctx.createRadialGradient(-18, 0, 0, -18, 0, 22);
+  trailGrad.addColorStop(0, 'rgba(255,100,0,0.5)');
+  trailGrad.addColorStop(1, 'rgba(255,100,0,0)');
+  ctx.fillStyle = trailGrad;
+  ctx.fillRect(-40, -15, 28, 30);
+
+  // Body glow
+  const bGlow = ctx.createRadialGradient(0, 0, 2, 0, 0, 22);
+  bGlow.addColorStop(0, 'rgba(0,245,255,0.35)');
+  bGlow.addColorStop(1, 'rgba(0,245,255,0)');
+  ctx.fillStyle = bGlow;
+  ctx.beginPath(); ctx.arc(0, 0, 22, 0, Math.PI * 2); ctx.fill();
+
+  // Fuselage
+  ctx.fillStyle = '#0a2244';
+  ctx.strokeStyle = '#00f5ff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 16, 10, 0, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+
+  // Cockpit dome
+  const cockpitGrad = ctx.createRadialGradient(3, -3, 0, 3, -3, 9);
+  cockpitGrad.addColorStop(0, 'rgba(0,245,255,0.9)');
+  cockpitGrad.addColorStop(0.6, 'rgba(0,150,200,0.5)');
+  cockpitGrad.addColorStop(1, 'rgba(0,50,100,0.6)');
+  ctx.fillStyle = cockpitGrad;
+  ctx.strokeStyle = 'rgba(0,245,255,0.8)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.ellipse(3, -2, 7, 6, -0.3, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+
+  // Wing top
+  ctx.fillStyle = '#062040';
+  ctx.strokeStyle = 'rgba(0,245,255,0.5)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-4, -9); ctx.lineTo(8, -14); ctx.lineTo(12, -8); ctx.lineTo(-4, -7);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+
+  // Wing bottom
+  ctx.beginPath();
+  ctx.moveTo(-4, 9); ctx.lineTo(8, 14); ctx.lineTo(12, 8); ctx.lineTo(-4, 7);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+
+  // Engine exhaust
+  ctx.strokeStyle = `rgba(255,${100 + Math.sin(frame * 0.4) * 80},0,0.9)`;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(-16, -3); ctx.lineTo(-22 - Math.random() * 6, 0); ctx.stroke();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = `rgba(255,200,50,0.6)`;
+  ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(-20 - Math.random() * 8, 2); ctx.stroke();
+
+  // Nose
+  ctx.fillStyle = '#00f5ff';
+  ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(24, -2); ctx.lineTo(24, 2); ctx.closePath(); ctx.fill();
+
+  ctx.restore();
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+function drawHUD() {
+  // Scanline overlay
+  for (let y = 0; y < H; y += 3) {
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    ctx.fillRect(0, y, W, 1);
+  }
+
+  // Corner decorations
+  const c = 'rgba(0,245,255,0.4)';
+  ctx.strokeStyle = c; ctx.lineWidth = 1.5;
+  const cs = 20;
+  // TL
+  ctx.beginPath(); ctx.moveTo(0, cs); ctx.lineTo(0, 0); ctx.lineTo(cs, 0); ctx.stroke();
+  // TR
+  ctx.beginPath(); ctx.moveTo(W - cs, 0); ctx.lineTo(W, 0); ctx.lineTo(W, cs); ctx.stroke();
+  // BL
+  ctx.beginPath(); ctx.moveTo(0, H - cs); ctx.lineTo(0, H); ctx.lineTo(cs, H); ctx.stroke();
+  // BR
+  ctx.beginPath(); ctx.moveTo(W - cs, H); ctx.lineTo(W, H); ctx.lineTo(W, H - cs); ctx.stroke();
+}
+
+// ---- Physics ----
+function checkCollision() {
+  const bx = bird.x, by = bird.y, br = bird.r + 2;
+  if (by - br <= 0 || by + br >= H - 60) return true;
+  for (const p of pipes) {
+    const inX = bx + br > p.x && bx - br < p.x + PIPE_W;
+    if (inX) {
+      if (by - br < p.topH || by + br > p.topH + PIPE_GAP) return true;
+    }
+  }
+  return false;
+}
+
+function jump() {
+  if (state === 'idle') {
+    startGame();
+    return;
+  }
+  if (state === 'dead') return;
+  bird.vy = JUMP;
+  spawnParticles(bird.x - 10, bird.y, '#00f5ff', 6);
+}
+
+function startGame() {
+  state = 'playing';
+  score = 0;
+  pipes = [];
+  pipeTimer = 0;
+  bird.y = 250; bird.vy = 0;
+  particles = [];
+  document.getElementById('score-display').textContent = '0';
+  document.getElementById('screen').classList.add('hidden');
+}
+
+function endGame() {
+  state = 'dead';
+  spawnParticles(bird.x, bird.y, '#ff006e', 25);
+  spawnParticles(bird.x, bird.y, '#ffdd00', 18);
+  spawnParticles(bird.x, bird.y, '#00f5ff', 12);
+
+  if (score > best) best = score;
+  document.getElementById('hi-display').textContent = 'BEST: ' + best;
+
+  // Show game over screen
+  const screen = document.getElementById('screen');
+  screen.innerHTML = `
+    <div class="screen-sub">// SYSTÈME DÉTRUIT //</div>
+    <div class="screen-title" style="font-size:28px">GAME<br>OVER</div>
+    <div class="divider"></div>
+    <div class="screen-sub">SCORE</div>
+    <div class="screen-score">${score}</div>
+    <div class="screen-sub">MEILLEUR : ${best}</div>
+    <button class="screen-btn" id="start-btn">REJOUER</button>
+    <div class="hint">ESPACE · CLIC · TAP</div>
+  `;
+  screen.classList.remove('hidden');
+  document.getElementById('start-btn').addEventListener('click', startGame);
+}
+
+// ---- Loop ----
+function loop() {
+  frame++;
+  drawBg();
+
+  if (state === 'playing') {
+    // Bird physics
+    bird.vy += GRAVITY;
+    bird.y += bird.vy;
+
+    // Pipes
+    pipeTimer++;
+    if (pipeTimer >= PIPE_INTERVAL) { spawnPipe(); pipeTimer = 0; }
+
+    pipes.forEach(p => {
+      p.x -= PIPE_SPEED;
+      // Score
+      if (!p.scored && p.x + PIPE_W < bird.x) {
+        p.scored = true;
+        score++;
+        document.getElementById('score-display').textContent = score;
+        spawnParticles(bird.x, bird.y - 20, '#ffdd00', 8);
+      }
+    });
+    pipes = pipes.filter(p => p.x + PIPE_W + 10 > 0);
+
+    if (checkCollision()) endGame();
+  }
+
+  if (state === 'idle') {
+    // Float animation
+    bird.y = 250 + Math.sin(frame * 0.04) * 18;
+  }
+
+  // Draw pipes
+  pipes.forEach(drawPipe);
+
+  // Draw ground
+  ctx.fillStyle = '#040f28';
+  ctx.fillRect(0, H - 60, W, 60);
+  ctx.strokeStyle = 'rgba(255,0,110,0.5)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, H - 60); ctx.lineTo(W, H - 60); ctx.stroke();
+
+  // Animated ground lines
+  ctx.strokeStyle = 'rgba(255,0,110,0.15)';
+  ctx.lineWidth = 0.5;
+  for (let x = (W - (frame * PIPE_SPEED) % 40); x < W; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, H - 60); ctx.lineTo(x, H); ctx.stroke();
+  }
+
+  // Draw bird
+  if (state !== 'dead') drawBird();
+
+  // Particles
+  particles.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.15;
+    p.life -= p.decay;
+  });
+  particles = particles.filter(p => p.life > 0);
+  drawParticles();
+
+  drawHUD();
+
+  requestAnimationFrame(loop);
+}
+
+// ---- Controls ----
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); jump(); }
+});
+canvas.addEventListener('click', jump);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); jump(); }, { passive: false });
+document.getElementById('start-btn').addEventListener('click', startGame);
+
+loop();
+</script>
+</body>
+</html>
